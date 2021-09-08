@@ -9,32 +9,45 @@ RUN apt-get update \
     build-essential \
     ca-certificates \
     cmake \
-    g++-7 \
     git \
     golang \
+    libc-ares-dev \
     libcurl4-openssl-dev \
     libprotobuf-dev \
+    libre2-dev \
+    libssl-dev \
     libtool \
     libz-dev \
     pkg-config \
     protobuf-compiler \
-    wget
-
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 5 \
-    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-7 5
+    wget \
+    zlib1g-dev
 
 
 ### Build gRPC
 FROM build-base as grpc
-ARG GRPC_VERSION=v1.27.x
+ARG GRPC_VERSION=v1.40.x
 
 RUN git clone --depth 1 -b $GRPC_VERSION https://github.com/grpc/grpc \
-    && cd grpc \
-    && git submodule update --depth 1 --init \
-    && make HAS_SYSTEM_PROTOBUF=false \
-    && make install \
-    && cd third_party/protobuf \
-    && make install
+    && cd grpc\
+    # Get absl
+    && git submodule update --depth 1 --init -- "third_party/abseil-cpp" \
+    # Get protobuf
+    && git submodule update --depth 1 --init -- "third_party/protobuf" \
+    && mkdir .build && cd .build \
+    && cmake \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=ON \
+    -DgRPC_INSTALL=ON \
+    -DgRPC_BUILD_TESTS=OFF \
+    -DgRPC_ABSL_PROVIDER=module     \
+    -DgRPC_CARES_PROVIDER=package    \
+    -DgRPC_PROTOBUF_PROVIDER=module \
+    -DgRPC_RE2_PROVIDER=package      \
+    -DgRPC_SSL_PROVIDER=package      \
+    -DgRPC_ZLIB_PROVIDER=package \
+    .. \
+    && make -j$(nproc) install
 
 
 ### Build opentracing-cpp
@@ -45,8 +58,10 @@ RUN git clone --depth 1 -b $OPENTRACING_CPP_VERSION https://github.com/opentraci
     && cd opentracing-cpp \
     && mkdir .build && cd .build \
     && cmake -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_MOCKTRACER=OFF \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     -DBUILD_TESTING=OFF .. \
-    && make && make install
+    && make -j$(nproc) install
 
 
 ### Build zipkin-cpp-opentracing
@@ -58,13 +73,16 @@ RUN apt-get --no-install-recommends --no-install-suggests -y install libcurl4-gn
 RUN git clone --depth 1 -b $ZIPKIN_CPP_VERSION https://github.com/rnburn/zipkin-cpp-opentracing.git \
     && cd zipkin-cpp-opentracing \
     && mkdir .build && cd .build \
-    && cmake -DBUILD_SHARED_LIBS=1 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF .. \
-    && make && make install \
-    && ln -s /usr/local/lib/libzipkin_opentracing.so /usr/local/lib/libzipkin_opentracing_plugin.so
+    && cmake -DBUILD_SHARED_LIBS=OFF \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_PLUGIN=ON \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DBUILD_TESTING=OFF .. \
+    && make -j$(nproc) install
 
 
 ### Build Jaeger cpp-client
-FROM build-base as jaeger-cpp-client
+FROM opentracing-cpp as jaeger-cpp-client
 ARG JAEGER_CPP_VERSION=v0.7.0
 
 RUN git clone --depth 1 -b $JAEGER_CPP_VERSION https://github.com/jaegertracing/jaeger-client-cpp \
@@ -72,16 +90,20 @@ RUN git clone --depth 1 -b $JAEGER_CPP_VERSION https://github.com/jaegertracing/
     && mkdir .build \
     && cd .build \
     && cmake -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=OFF \
     -DBUILD_TESTING=OFF \
+    -DJAEGERTRACING_BUILD_EXAMPLES=OFF \
+    -DJAEGERTRACING_BUILD_CROSSDOCK=OFF \
+    -DJAEGERTRACING_COVERAGE=OFF \
+    -DJAEGERTRACING_PLUGIN=ON \
+    -DHUNTER_CONFIGURATION_TYPES=Release \
     -DJAEGERTRACING_WITH_YAML_CPP=ON .. \
-    && make \
-    && make install \
+    && make -j$(nproc) install \
     && export HUNTER_INSTALL_DIR=$(cat _3rdParty/Hunter/install-root-dir) \
-    && cp $HUNTER_INSTALL_DIR/lib/libyaml*so /usr/local/lib/ \
     && mkdir /hunter \
     && cp -r $HUNTER_INSTALL_DIR/lib /hunter/ \
     && cp -r $HUNTER_INSTALL_DIR/include /hunter/ \
-    && ln -s /usr/local/lib/libjaegertracing.so /usr/local/lib/libjaegertracing_plugin.so
+    && mv libjaegertracing_plugin.so /usr/local/lib/libjaegertracing_plugin.so
 
 
 ### Build dd-opentracing-cpp
@@ -92,9 +114,12 @@ RUN git clone --depth 1 -b $DATADOG_VERSION https://github.com/DataDog/dd-opentr
     && cd dd-opentracing-cpp \
     && scripts/install_dependencies.sh not-opentracing not-curl not-zlib \
     && mkdir .build && cd .build \
-    && cmake -DBUILD_SHARED_LIBS=1 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF .. \
-    && make && make install \
-    && ln -s /usr/local/lib/libdd_opentracing.so /usr/local/lib/libdd_opentracing_plugin.so
+    && cmake -DBUILD_SHARED_LIBS=OFF \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DBUILD_PLUGIN=ON \
+    -DBUILD_TESTING=OFF .. \
+    && make -j$(nproc) install
 
 
 ### Build nginx-opentracing modules
@@ -111,7 +136,6 @@ RUN echo "deb-src http://nginx.org/packages/mainline/debian/ stretch nginx" >> /
 RUN wget -O nginx-release-${NGINX_VERSION}.tar.gz https://github.com/nginx/nginx/archive/release-${NGINX_VERSION}.tar.gz \
     && tar zxf nginx-release-${NGINX_VERSION}.tar.gz \
     && cd nginx-release-${NGINX_VERSION} \
-    && NGINX_MODULES_PATH=$(nginx -V 2>&1 | grep -oP "modules-path=\K[^\s]*") \
     && auto/configure \
     --with-compat \
     --add-dynamic-module=/src/opentracing \
@@ -119,7 +143,7 @@ RUN wget -O nginx-release-${NGINX_VERSION}.tar.gz https://github.com/nginx/nginx
     --with-ld-opt="-L/hunter/lib" \
     --with-debug \
     && make modules \
-    && cp objs/ngx_http_opentracing_module.so $NGINX_MODULES_PATH/
+    && cp objs/ngx_http_opentracing_module.so /usr/lib/nginx/modules/
 
 
 ### Build final image
