@@ -31,7 +31,7 @@ ARG GRPC_VERSION=v1.27.x
 RUN git clone --depth 1 -b $GRPC_VERSION https://github.com/grpc/grpc \
     && cd grpc \
     && git submodule update --depth 1 --init \
-    && make HAS_SYSTEM_PROTOBUF=false \
+    && make -j$(nproc) HAS_SYSTEM_PROTOBUF=false \
     && make install \
     && cd third_party/protobuf \
     && make install
@@ -45,8 +45,9 @@ RUN git clone --depth 1 -b $OPENTRACING_CPP_VERSION https://github.com/opentraci
     && cd opentracing-cpp \
     && mkdir .build && cd .build \
     && cmake -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_MOCKTRACER=OFF \
     -DBUILD_TESTING=OFF .. \
-    && make && make install
+    && make -j$(nproc) && make install
 
 
 ### Build zipkin-cpp-opentracing
@@ -58,8 +59,8 @@ RUN apt-get --no-install-recommends --no-install-suggests -y install libcurl4-gn
 RUN git clone --depth 1 -b $ZIPKIN_CPP_VERSION https://github.com/rnburn/zipkin-cpp-opentracing.git \
     && cd zipkin-cpp-opentracing \
     && mkdir .build && cd .build \
-    && cmake -DBUILD_SHARED_LIBS=1 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF .. \
-    && make && make install \
+    && cmake -DBUILD_SHARED_LIBS=1 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_MOCKTRACER=OFF .. \
+    && make -j$(nproc) && make install \
     && ln -s /usr/local/lib/libzipkin_opentracing.so /usr/local/lib/libzipkin_opentracing_plugin.so
 
 
@@ -73,8 +74,9 @@ RUN git clone --depth 1 -b $JAEGER_CPP_VERSION https://github.com/jaegertracing/
     && cd .build \
     && cmake -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_TESTING=OFF \
+    -DBUILD_MOCKTRACER=OFF \
     -DJAEGERTRACING_WITH_YAML_CPP=ON .. \
-    && make \
+    && make -j$(nproc) \
     && make install \
     && export HUNTER_INSTALL_DIR=$(cat _3rdParty/Hunter/install-root-dir) \
     && cp $HUNTER_INSTALL_DIR/lib/libyaml*so /usr/local/lib/ \
@@ -92,8 +94,8 @@ RUN git clone --depth 1 -b $DATADOG_VERSION https://github.com/DataDog/dd-opentr
     && cd dd-opentracing-cpp \
     && scripts/install_dependencies.sh not-opentracing not-curl not-zlib \
     && mkdir .build && cd .build \
-    && cmake -DBUILD_SHARED_LIBS=1 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF .. \
-    && make && make install \
+    && cmake -DBUILD_SHARED_LIBS=1 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_MOCKTRACER=OFF .. \
+    && make -j$(nproc) && make install \
     && ln -s /usr/local/lib/libdd_opentracing.so /usr/local/lib/libdd_opentracing_plugin.so
 
 
