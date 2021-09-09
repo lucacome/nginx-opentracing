@@ -24,8 +24,8 @@ RUN apt-get update \
     wget \
     zlib1g-dev
 
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 5 \
-    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-7 5
+# RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 5 \
+#     && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-7 5
 
 
 ### Build gRPC
@@ -45,7 +45,7 @@ RUN git clone --depth 1 -b $GRPC_VERSION https://github.com/grpc/grpc \
     # Install protobuf
     && mkdir -p "third_party/protobuf/cmake/build" \
     && pushd "third_party/protobuf/cmake/build" \
-    && cmake -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release .. \
+    && cmake -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -Dprotobuf_BUILD_SHARED_LIBS=ON .. \
     && make -j$(nproc) install \
     && popd \
     && git submodule foreach 'cd $toplevel; rm -rf $name' \
