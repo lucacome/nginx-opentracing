@@ -11,7 +11,7 @@ on:
       - master
 
 env:
-  PLATFORMS: "linux/arm64,linux/amd64,linux/ppc64le"
+  PLATFORMS: "linux/arm64,linux/amd64,linux/ppc64le,linux/s360x"
 
 jobs:
     build-docker:

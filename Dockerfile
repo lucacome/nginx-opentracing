@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.3
-FROM nginx:1.21.1 as build-base
+FROM debian:buster as build-base
 
 RUN apt-get update \
     && apt-get install --no-install-recommends --no-install-suggests -y \
@@ -12,13 +12,17 @@ RUN apt-get update \
     g++-7 \
     git \
     golang \
+    libc-ares-dev \
     libcurl4-openssl-dev \
     libprotobuf-dev \
+    libre2-dev \
+    libssl-dev \
     libtool \
     libz-dev \
     pkg-config \
     protobuf-compiler \
-    wget
+    wget \
+    zlib1g-dev
 
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 5 \
     && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-7 5
@@ -26,15 +30,38 @@ RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 5 \
 
 ### Build gRPC
 FROM build-base as grpc
-ARG GRPC_VERSION=v1.27.x
+ARG GRPC_VERSION=v1.40.x
 
+SHELL ["/bin/bash", "-c"]
 RUN git clone --depth 1 -b $GRPC_VERSION https://github.com/grpc/grpc \
-    && cd grpc \
+    && cd grpc\
     && git submodule update --depth 1 --init \
-    && make -j$(nproc) HAS_SYSTEM_PROTOBUF=false \
-    && make install \
-    && cd third_party/protobuf \
-    && make install
+    #   Install absl
+    && mkdir -p "third_party/abseil-cpp/cmake/build" \
+    && pushd "third_party/abseil-cpp/cmake/build" \
+    && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE ../.. \
+    && make -j$(nproc)  \
+    && popd \
+    # Install protobuf
+    && mkdir -p "third_party/protobuf/cmake/build" \
+    && pushd "third_party/protobuf/cmake/build" \
+    && cmake -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release .. \
+    && make -j$(nproc)  \
+    && popd \
+    && mkdir .build && cd .build \
+    && cmake \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=1 \
+    -DgRPC_INSTALL=ON \
+    -DgRPC_BUILD_TESTS=OFF \
+    -DgRPC_ABSL_PROVIDER=module     \
+    -DgRPC_CARES_PROVIDER=package    \
+    -DgRPC_PROTOBUF_PROVIDER=module \
+    -DgRPC_RE2_PROVIDER=package      \
+    -DgRPC_SSL_PROVIDER=package      \
+    -DgRPC_ZLIB_PROVIDER=package \
+    .. \
+    && make -j$(nproc) install
 
 
 ### Build opentracing-cpp
@@ -59,7 +86,7 @@ RUN apt-get --no-install-recommends --no-install-suggests -y install libcurl4-gn
 RUN git clone --depth 1 -b $ZIPKIN_CPP_VERSION https://github.com/rnburn/zipkin-cpp-opentracing.git \
     && cd zipkin-cpp-opentracing \
     && mkdir .build && cd .build \
-    && cmake -DBUILD_SHARED_LIBS=1 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_MOCKTRACER=OFF .. \
+    && cmake -DBUILD_SHARED_LIBS=1 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF .. \
     && make -j$(nproc) && make install \
     && ln -s /usr/local/lib/libzipkin_opentracing.so /usr/local/lib/libzipkin_opentracing_plugin.so
 
@@ -74,7 +101,6 @@ RUN git clone --depth 1 -b $JAEGER_CPP_VERSION https://github.com/jaegertracing/
     && cd .build \
     && cmake -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_TESTING=OFF \
-    -DBUILD_MOCKTRACER=OFF \
     -DJAEGERTRACING_WITH_YAML_CPP=ON .. \
     && make -j$(nproc) \
     && make install \
@@ -94,7 +120,7 @@ RUN git clone --depth 1 -b $DATADOG_VERSION https://github.com/DataDog/dd-opentr
     && cd dd-opentracing-cpp \
     && scripts/install_dependencies.sh not-opentracing not-curl not-zlib \
     && mkdir .build && cd .build \
-    && cmake -DBUILD_SHARED_LIBS=1 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_MOCKTRACER=OFF .. \
+    && cmake -DBUILD_SHARED_LIBS=1 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF .. \
     && make -j$(nproc) && make install \
     && ln -s /usr/local/lib/libdd_opentracing.so /usr/local/lib/libdd_opentracing_plugin.so
 
