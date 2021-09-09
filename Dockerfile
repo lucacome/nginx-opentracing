@@ -40,14 +40,15 @@ RUN git clone --depth 1 -b $GRPC_VERSION https://github.com/grpc/grpc \
     && mkdir -p "third_party/abseil-cpp/cmake/build" \
     && pushd "third_party/abseil-cpp/cmake/build" \
     && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE ../.. \
-    && make -j$(nproc)  \
+    && make -j$(nproc) install \
     && popd \
     # Install protobuf
     && mkdir -p "third_party/protobuf/cmake/build" \
     && pushd "third_party/protobuf/cmake/build" \
     && cmake -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release .. \
-    && make -j$(nproc)  \
+    && make -j$(nproc) install \
     && popd \
+    && git submodule foreach 'cd $toplevel; rm -rf $name' \
     && mkdir .build && cd .build \
     && cmake \
     -DCMAKE_BUILD_TYPE=Release \
