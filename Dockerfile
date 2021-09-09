@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.3
-FROM debian:buster as build-base
+FROM nginx:1.21.1 as build-base
 
 RUN apt-get update \
     && apt-get install --no-install-recommends --no-install-suggests -y \
