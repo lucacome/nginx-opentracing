@@ -164,7 +164,7 @@ RUN xx-info env && git clone --depth 1 -b $DATADOG_VERSION https://github.com/Da
 
 
 ### Build nginx-opentracing modules
-FROM nginx:1.21.3 as build-nginx
+FROM nginx:1.23.2 as build-nginx
 
 COPY --from=jaeger-cpp-client /hunter /hunter
 COPY . /src
@@ -187,7 +187,7 @@ RUN curl -sSL -O https://github.com/nginx/nginx/archive/release-${NGINX_VERSION}
 
 
 ### Build final image
-FROM nginx:1.21.3 as final
+FROM nginx:1.23.2 as final
 
 COPY --from=build-nginx /usr/lib/nginx/modules/ /usr/lib/nginx/modules/
 COPY --from=dd-opentracing-cpp /usr/local/lib/ /usr/local/lib/
